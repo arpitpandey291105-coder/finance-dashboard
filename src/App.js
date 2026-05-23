@@ -12,6 +12,13 @@ import BudgetSettings from './components/BudgetSettings';
 import ExportCSV from './components/ExportCSV';
 import ImportCSV from './components/ImportCSV';
 
+import { auth, provider, db } from './firebase';
+import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import {
+  collection, doc, setDoc, deleteDoc,
+  onSnapshot, query, where
+} from 'firebase/firestore';
+
 const DEFAULT_BUDGETS = {
   Food: 5000,
   Rent: 15000,
@@ -21,49 +28,149 @@ const DEFAULT_BUDGETS = {
 };
 
 function App() {
-  const [transactions, setTransactions] = useState(() => {
-    const saved = localStorage.getItem('transactions');
-    return saved ? JSON.parse(saved) : initialTransactions;
-  });
-
-  const [budgets, setBudgets] = useState(() => {
-    const saved = localStorage.getItem('budgets');
-    return saved ? JSON.parse(saved) : DEFAULT_BUDGETS;
-  });
-
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [transactions, setTransactions] = useState([]);
+  const [budgets, setBudgets] = useState(DEFAULT_BUDGETS);
   const [selectedCategory, setSelectedCategory] = useState('All');
 
+  // 🔐 Listen to auth state
   useEffect(() => {
-    localStorage.setItem('transactions', JSON.stringify(transactions));
-  }, [transactions]);
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
+  // 🔥 Load transactions from Firestore in real-time
   useEffect(() => {
-    localStorage.setItem('budgets', JSON.stringify(budgets));
-  }, [budgets]);
+    if (!user) return;
 
-  const handleAdd = (transaction) => {
-    setTransactions([...transactions, transaction]);
+    const q = query(
+      collection(db, 'transactions'),
+      where('uid', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setTransactions(data);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // 🔥 Load budgets from Firestore in real-time
+  useEffect(() => {
+    if (!user) return;
+
+    const unsubscribe = onSnapshot(doc(db, 'budgets', user.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        setBudgets(docSnap.data());
+      } else {
+        setBudgets(DEFAULT_BUDGETS);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (err) {
+      console.error('Login failed:', err);
+    }
   };
 
-  const handleDelete = (id) => {
-    setTransactions(transactions.filter(t => t.id !== id));
+  const handleLogout = async () => {
+    await signOut(auth);
+    setTransactions([]);
+    setBudgets(DEFAULT_BUDGETS);
   };
 
-  const handleSaveBudgets = (newBudgets) => {
-    setBudgets(newBudgets);
+  // ➕ Add transaction to Firestore
+  const handleAdd = async (transaction) => {
+    const newDoc = doc(collection(db, 'transactions'));
+    await setDoc(newDoc, { ...transaction, uid: user.uid, id: newDoc.id });
   };
 
-  const handleImport = (importedTransactions) => {
-    setTransactions(prev => [...prev, ...importedTransactions]);
+  // 🗑️ Delete transaction from Firestore
+  const handleDelete = async (id) => {
+    await deleteDoc(doc(db, 'transactions', id));
+  };
+
+  // 💾 Save budgets to Firestore
+  const handleSaveBudgets = async (newBudgets) => {
+    await setDoc(doc(db, 'budgets', user.uid), newBudgets);
+  };
+
+  // 📥 Import CSV — bulk add to Firestore
+  const handleImport = async (importedTransactions) => {
+    for (const t of importedTransactions) {
+      const newDoc = doc(collection(db, 'transactions'));
+      await setDoc(newDoc, { ...t, uid: user.uid, id: newDoc.id });
+    }
   };
 
   const filteredTransactions = selectedCategory === 'All'
     ? transactions
     : transactions.filter(t => t.category === selectedCategory);
 
+  // ⏳ Loading state
+  if (authLoading) {
+    return (
+      <div style={{
+        backgroundColor: '#0f0f13',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#fff',
+        fontSize: '1.2rem'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  // 🔐 Login screen
+  if (!user) {
+    return (
+      <div style={{
+        backgroundColor: '#0f0f13',
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: '1.5rem',
+      }}>
+        <h1 style={{ color: '#fff', fontSize: '2rem', margin: 0 }}>💰 FinancePro</h1>
+        <p style={{ color: '#aaa', margin: 0 }}>Sign in to sync your finances across devices</p>
+        <button
+          onClick={handleLogin}
+          style={{
+            padding: '12px 28px',
+            backgroundColor: '#4285F4',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '1rem',
+            cursor: 'pointer',
+            fontWeight: '600',
+          }}
+        >
+          Sign in with Google
+        </button>
+      </div>
+    );
+  }
+
+  // ✅ Main Dashboard
   return (
     <div style={{ backgroundColor: '#0f0f13', minHeight: '100vh' }}>
-      <Navbar />
+      <Navbar user={user} onLogout={handleLogout} />
       <SummaryCards transactions={transactions} />
       <BudgetAlert transactions={transactions} budgets={budgets} />
       <AddTransaction onAdd={handleAdd} />
