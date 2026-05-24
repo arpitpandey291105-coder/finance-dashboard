@@ -1,8 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, Bell, LogOut } from 'lucide-react';
+import { LayoutDashboard, Bell, LogOut, Sun, Moon } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
-function Navbar({ user, onLogout }) {
+function Navbar({ user, onLogout, onProfileClick }) {
+  const { isDark, toggleTheme } = useTheme();
   const today = new Date().toLocaleDateString('en-IN', { dateStyle: 'long' });
 
   return (
@@ -15,8 +17,8 @@ function Navbar({ user, onLogout }) {
         justifyContent: 'space-between',
         alignItems: 'center',
         padding: '1rem 2.5rem',
-        background: '#13131a',
-        borderBottom: '1px solid #2a2a3a',
+        background: isDark ? '#13131a' : '#ffffff',
+        borderBottom: isDark ? '1px solid #2a2a3a' : '1px solid #e0e0e0',
         position: 'sticky',
         top: 0,
         zIndex: 100,
@@ -32,7 +34,7 @@ function Navbar({ user, onLogout }) {
         }}>
           <LayoutDashboard size={20} color="#fff" />
         </div>
-        <span style={{ fontSize: '1.2rem', fontWeight: '700', color: '#fff' }}>
+        <span style={{ fontSize: '1.2rem', fontWeight: '700', color: isDark ? '#fff' : '#333' }}>
           Finance<span style={{ color: '#6366f1' }}>Pro</span>
         </span>
       </div>
@@ -43,10 +45,28 @@ function Navbar({ user, onLogout }) {
       {/* Right Side */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
 
+        {/* Theme Toggle */}
+        <div
+          onClick={toggleTheme}
+          title="Toggle Theme"
+          style={{
+            background: isDark ? '#1e1e2e' : '#f0f0f0',
+            border: isDark ? '1px solid #2a2a3a' : '1px solid #e0e0e0',
+            borderRadius: '10px',
+            padding: '8px',
+            cursor: 'pointer',
+            display: 'flex',
+          }}>
+          {isDark
+            ? <Sun size={18} color="#f59e0b" />
+            : <Moon size={18} color="#6366f1" />
+          }
+        </div>
+
         {/* Bell */}
         <div style={{
-          background: '#1e1e2e',
-          border: '1px solid #2a2a3a',
+          background: isDark ? '#1e1e2e' : '#f0f0f0',
+          border: isDark ? '1px solid #2a2a3a' : '1px solid #e0e0e0',
           borderRadius: '10px',
           padding: '8px',
           cursor: 'pointer',
@@ -58,7 +78,14 @@ function Navbar({ user, onLogout }) {
         {/* User Photo + Name */}
         {user && (
           <>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div
+              onClick={onProfileClick}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+              }}>
               <img
                 src={user.photoURL}
                 alt="avatar"
@@ -71,7 +98,7 @@ function Navbar({ user, onLogout }) {
               />
               <span style={{
                 fontSize: '0.85rem',
-                color: '#fff',
+                color: isDark ? '#fff' : '#333',
                 fontWeight: '500',
               }}>
                 {user.displayName?.split(' ')[0]}
@@ -83,8 +110,8 @@ function Navbar({ user, onLogout }) {
               onClick={onLogout}
               title="Logout"
               style={{
-                background: '#1e1e2e',
-                border: '1px solid #2a2a3a',
+                background: isDark ? '#1e1e2e' : '#f0f0f0',
+                border: isDark ? '1px solid #2a2a3a' : '1px solid #e0e0e0',
                 borderRadius: '10px',
                 padding: '8px',
                 cursor: 'pointer',

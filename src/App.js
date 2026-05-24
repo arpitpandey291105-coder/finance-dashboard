@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { initialTransactions } from './data';
 import Navbar from './components/Navbar';
 import SummaryCards from './components/SummaryCards';
 import ExpenseChart from './components/ExpenseChart';
@@ -11,13 +10,18 @@ import BudgetAlert from './components/BudgetAlert';
 import BudgetSettings from './components/BudgetSettings';
 import ExportCSV from './components/ExportCSV';
 import ImportCSV from './components/ImportCSV';
+import ProfilePage from './components/ProfilePage';
+import AuthPage from './components/AuthPage';
+import SavingsGoals from './components/SavingsGoals';
+import AIInsights from './components/AIInsights';
 
-import { auth, provider, db } from './firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { auth, db } from './firebase';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
 import {
   collection, doc, setDoc, deleteDoc,
   onSnapshot, query, where
 } from 'firebase/firestore';
+import { useTheme } from './context/ThemeContext';
 
 const DEFAULT_BUDGETS = {
   Food: 5000,
@@ -28,13 +32,14 @@ const DEFAULT_BUDGETS = {
 };
 
 function App() {
+  const { isDark } = useTheme();
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [transactions, setTransactions] = useState([]);
   const [budgets, setBudgets] = useState(DEFAULT_BUDGETS);
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [showProfile, setShowProfile] = useState(false);
 
-  // 🔐 Listen to auth state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -43,27 +48,21 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  // 🔥 Load transactions from Firestore in real-time
   useEffect(() => {
     if (!user) return;
-
     const q = query(
       collection(db, 'transactions'),
       where('uid', '==', user.uid)
     );
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setTransactions(data);
     });
-
     return () => unsubscribe();
   }, [user]);
 
-  // 🔥 Load budgets from Firestore in real-time
   useEffect(() => {
     if (!user) return;
-
     const unsubscribe = onSnapshot(doc(db, 'budgets', user.uid), (docSnap) => {
       if (docSnap.exists()) {
         setBudgets(docSnap.data());
@@ -71,17 +70,8 @@ function App() {
         setBudgets(DEFAULT_BUDGETS);
       }
     });
-
     return () => unsubscribe();
   }, [user]);
-
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (err) {
-      console.error('Login failed:', err);
-    }
-  };
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -89,23 +79,19 @@ function App() {
     setBudgets(DEFAULT_BUDGETS);
   };
 
-  // ➕ Add transaction to Firestore
   const handleAdd = async (transaction) => {
     const newDoc = doc(collection(db, 'transactions'));
     await setDoc(newDoc, { ...transaction, uid: user.uid, id: newDoc.id });
   };
 
-  // 🗑️ Delete transaction from Firestore
   const handleDelete = async (id) => {
     await deleteDoc(doc(db, 'transactions', id));
   };
 
-  // 💾 Save budgets to Firestore
   const handleSaveBudgets = async (newBudgets) => {
     await setDoc(doc(db, 'budgets', user.uid), newBudgets);
   };
 
-  // 📥 Import CSV — bulk add to Firestore
   const handleImport = async (importedTransactions) => {
     for (const t of importedTransactions) {
       const newDoc = doc(collection(db, 'transactions'));
@@ -117,7 +103,6 @@ function App() {
     ? transactions
     : transactions.filter(t => t.category === selectedCategory);
 
-  // ⏳ Loading state
   if (authLoading) {
     return (
       <div style={{
@@ -134,52 +119,42 @@ function App() {
     );
   }
 
-  // 🔐 Login screen
   if (!user) {
-    return (
-      <div style={{
-        backgroundColor: '#0f0f13',
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '1.5rem',
-      }}>
-        <h1 style={{ color: '#fff', fontSize: '2rem', margin: 0 }}>💰 FinancePro</h1>
-        <p style={{ color: '#aaa', margin: 0 }}>Sign in to sync your finances across devices</p>
-        <button
-          onClick={handleLogin}
-          style={{
-            padding: '12px 28px',
-            backgroundColor: '#4285F4',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '8px',
-            fontSize: '1rem',
-            cursor: 'pointer',
-            fontWeight: '600',
-          }}
-        >
-          Sign in with Google
-        </button>
-      </div>
-    );
+    return <AuthPage />;
   }
 
-  // ✅ Main Dashboard
   return (
-    <div style={{ backgroundColor: '#0f0f13', minHeight: '100vh' }}>
-      <Navbar user={user} onLogout={handleLogout} />
+    <div style={{
+      backgroundColor: isDark ? '#0f0f13' : '#f5f5f5',
+      minHeight: '100vh',
+      transition: 'all 0.3s ease'
+    }}>
+
+      <Navbar
+        user={user}
+        onLogout={handleLogout}
+        onProfileClick={() => setShowProfile(true)}
+      />
+
+      {showProfile && (
+        <ProfilePage
+          user={user}
+          transactions={transactions}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
+
       <SummaryCards transactions={transactions} />
       <BudgetAlert transactions={transactions} budgets={budgets} />
       <AddTransaction onAdd={handleAdd} />
       <MonthlyChart transactions={transactions} />
+      <SavingsGoals user={user} transactions={transactions} />
       <CategoryFilter
         transactions={transactions}
         selectedCategory={selectedCategory}
         onFilter={setSelectedCategory}
       />
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: '1fr 1.5fr',
@@ -192,6 +167,7 @@ function App() {
           onDelete={handleDelete}
         />
       </div>
+
       <div style={{
         display: 'flex',
         gap: '12px',
@@ -202,6 +178,9 @@ function App() {
         <ExportCSV transactions={transactions} />
         <ImportCSV onImport={handleImport} />
       </div>
+
+      <AIInsights transactions={transactions} budgets={budgets} />
+
     </div>
   );
 }
